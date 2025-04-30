@@ -944,6 +944,9 @@ class PrivKeyV4(PrivKey, PubKeyV4):
     def sign(self, sigdata, hash_alg):
         return self.keymaterial.sign(sigdata, hash_alg)
 
+    def format_external_signature(self, raw_signature):
+        return self.keymaterial.format_external_signature(raw_signature)
+
 
 class PrivSubKey(VersionedPacket, Sub, Private):
     __typeid__ = 0x07

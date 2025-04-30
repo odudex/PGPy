@@ -1511,6 +1511,23 @@ class ECDSAPriv(PrivKey, ECDSAPub):
     def sign(self, sigdata, hash_alg):
         return self.__privkey__().sign(sigdata, ec.ECDSA(hash_alg))
 
+    def format_external_signature(self, raw_signature):
+        from ...util.util import bytes_to_ecdsasig
+
+        # airgapped_sig_bytes = binascii.a2b_base64(raw_signature)
+        # print("airgapped_sig_bytes: ", len(airgapped_sig_bytes), airgapped_sig_bytes)
+        ecdsa_sig = bytes_to_ecdsasig(raw_signature)
+        self.r = ecdsa_sig.r
+        self.s = ecdsa_sig.s
+
+        # Convert the signature to ASN.1 format
+        seq = Sequence(componentType=NamedTypes(
+            NamedType('r', Integer(self.r)),
+            NamedType('s', Integer(self.s))
+        ))
+
+        return encoder.encode(seq)
+
 
 class EdDSAPriv(PrivKey, EdDSAPub):
     __privfields__ = ('s', )

@@ -16,6 +16,7 @@ import operator
 import os
 import re
 import warnings
+warnings.filterwarnings('ignore')
 import weakref
 
 from datetime import datetime, timezone
@@ -1817,7 +1818,15 @@ class PGPKey(Armorable, ParentRef, PGPObject):
             for sk in itertools.chain([self], self.subkeys.values()):
                 sk._key.keymaterial.clear()
 
-    def add_uid(self, uid, selfsign=True, **prefs):
+    def add_uid(
+            self,
+            uid,
+            selfsign=True,
+            extract=False,
+            inject=None,
+            ext_sig_data=None,
+            **prefs
+        ):
         """
         Add a User ID to this key.
 
@@ -1830,10 +1839,25 @@ class PGPKey(Armorable, ParentRef, PGPObject):
         Any such keyword arguments are ignored if selfsign is ``False``
         """
         uid._parent = self
+        if selfsign and extract:
+            # When extracting certify will return sig_data, to be externally signed
+            return self.certify(
+                uid,
+                SignatureType.Positive_Cert,
+                extract=extract,
+                **prefs
+            )
         if selfsign:
-            uid |= self.certify(uid, SignatureType.Positive_Cert, **prefs)
+            uid |= self.certify(
+                uid,
+                SignatureType.Positive_Cert,
+                inject=inject,
+                ext_sig_data=ext_sig_data,
+                **prefs
+            )
 
         self |= uid
+        return None
 
     def get_uid(self, search):
         """
@@ -1914,7 +1938,7 @@ class PGPKey(Armorable, ParentRef, PGPObject):
 
         return next(self.self_signatures).key_flags
 
-    def _sign(self, subject, sig, **prefs):
+    def _sign(self, subject, sig, extract=False, inject=None, ext_sig_data=None, **prefs):
         """
         The actual signing magic happens here.
         :param subject: The subject to sign
@@ -1989,12 +2013,20 @@ class PGPKey(Armorable, ParentRef, PGPObject):
             if isinstance(self._key, PrivKeyV4):
                 sig._signature.subpackets.addnew('IssuerFingerprint', hashed=True, _version=4, _issuer_fpr=self.fingerprint)
 
-        sigdata = sig.hashdata(subject)
+        if ext_sig_data is not None:
+            sigdata = ext_sig_data
+        else:
+            sigdata = sig.hashdata(subject)
+            if extract:
+                return sigdata
         h2 = sig.hash_algorithm.hasher
         h2.update(sigdata)
         sig._signature.hash2 = bytearray(h2.digest()[:2])
 
-        _sig = self._key.sign(sigdata, getattr(hashes, sig.hash_algorithm.name)())
+        if inject is not None:
+            _sig = self._key.format_external_signature(inject)
+        else:
+            _sig = self._key.sign(sigdata, getattr(hashes, sig.hash_algorithm.name)())
         if _sig is NotImplemented:
             raise NotImplementedError(self.key_algorithm)
 
@@ -2004,7 +2036,7 @@ class PGPKey(Armorable, ParentRef, PGPObject):
         return sig
 
     @KeyAction(KeyFlags.Sign, is_unlocked=True, is_public=False)
-    def sign(self, subject, **prefs):
+    def sign(self, subject, extract=False, inject=None, ext_sig_data=None, **prefs):
         """
         Sign text, a message, or a timestamp using this key.
 
@@ -2052,10 +2084,18 @@ class PGPKey(Armorable, ParentRef, PGPObject):
 
         sig = PGPSignature.new(sig_type, self.key_algorithm, hash_algo, self.fingerprint.keyid, created=prefs.pop('created', None))
 
-        return self._sign(subject, sig, **prefs)
+        return self._sign(subject, sig, extract=extract, inject=inject, ext_sig_data=ext_sig_data, **prefs)
 
     @KeyAction(KeyFlags.Certify, is_unlocked=True, is_public=False)
-    def certify(self, subject, level=SignatureType.Generic_Cert, **prefs):
+    def certify(
+        self,
+        subject,
+        level=SignatureType.Generic_Cert,
+        extract=False,
+        inject=None,
+        ext_sig_data=None,
+        **prefs
+    ):
         """
         certify(subject, level=SignatureType.Generic_Cert, **prefs)
 
@@ -2219,7 +2259,23 @@ class PGPKey(Armorable, ParentRef, PGPObject):
                 if regex is not None:
                     sig._signature.subpackets.addnew('RegularExpression', hashed=True, regex=regex)
 
-        return self._sign(subject, sig, **prefs)
+        if extract:
+            return self._sign(
+                subject,
+                sig,
+                extract=extract,
+                **prefs
+            )
+        elif inject is not None:
+            return self._sign(
+                    subject,
+                    sig,
+                    inject=inject,
+                    ext_sig_data=ext_sig_data,
+                    **prefs
+                )
+        else:
+            return self._sign(subject, sig, **prefs)
 
     @KeyAction(KeyFlags.Certify, is_unlocked=True, is_public=False)
     def revoke(self, target, **prefs):
