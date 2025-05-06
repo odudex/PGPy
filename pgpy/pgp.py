@@ -1824,7 +1824,6 @@ class PGPKey(Armorable, ParentRef, PGPObject):
             selfsign=True,
             extract=False,
             inject=None,
-            ext_sig_data=None,
             **prefs
         ):
         """
@@ -1852,7 +1851,6 @@ class PGPKey(Armorable, ParentRef, PGPObject):
                 uid,
                 SignatureType.Positive_Cert,
                 inject=inject,
-                ext_sig_data=ext_sig_data,
                 **prefs
             )
 
@@ -1938,7 +1936,7 @@ class PGPKey(Armorable, ParentRef, PGPObject):
 
         return next(self.self_signatures).key_flags
 
-    def _sign(self, subject, sig, extract=False, inject=None, ext_sig_data=None, **prefs):
+    def _sign(self, subject, sig, extract=False, inject=None, **prefs):
         """
         The actual signing magic happens here.
         :param subject: The subject to sign
@@ -2013,12 +2011,9 @@ class PGPKey(Armorable, ParentRef, PGPObject):
             if isinstance(self._key, PrivKeyV4):
                 sig._signature.subpackets.addnew('IssuerFingerprint', hashed=True, _version=4, _issuer_fpr=self.fingerprint)
 
-        if ext_sig_data is not None:
-            sigdata = ext_sig_data
-        else:
-            sigdata = sig.hashdata(subject)
-            if extract:
-                return sigdata
+        sigdata = sig.hashdata(subject)
+        if extract:
+            return sigdata
         h2 = sig.hash_algorithm.hasher
         h2.update(sigdata)
         sig._signature.hash2 = bytearray(h2.digest()[:2])
@@ -2036,7 +2031,7 @@ class PGPKey(Armorable, ParentRef, PGPObject):
         return sig
 
     @KeyAction(KeyFlags.Sign, is_unlocked=True, is_public=False)
-    def sign(self, subject, extract=False, inject=None, ext_sig_data=None, **prefs):
+    def sign(self, subject, extract=False, inject=None, **prefs):
         """
         Sign text, a message, or a timestamp using this key.
 
@@ -2084,7 +2079,7 @@ class PGPKey(Armorable, ParentRef, PGPObject):
 
         sig = PGPSignature.new(sig_type, self.key_algorithm, hash_algo, self.fingerprint.keyid, created=prefs.pop('created', None))
 
-        return self._sign(subject, sig, extract=extract, inject=inject, ext_sig_data=ext_sig_data, **prefs)
+        return self._sign(subject, sig, extract=extract, inject=inject, **prefs)
 
     @KeyAction(KeyFlags.Certify, is_unlocked=True, is_public=False)
     def certify(
@@ -2093,7 +2088,6 @@ class PGPKey(Armorable, ParentRef, PGPObject):
         level=SignatureType.Generic_Cert,
         extract=False,
         inject=None,
-        ext_sig_data=None,
         **prefs
     ):
         """
@@ -2271,7 +2265,6 @@ class PGPKey(Armorable, ParentRef, PGPObject):
                     subject,
                     sig,
                     inject=inject,
-                    ext_sig_data=ext_sig_data,
                     **prefs
                 )
         else:

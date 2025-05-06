@@ -1512,7 +1512,26 @@ class ECDSAPriv(PrivKey, ECDSAPub):
         return self.__privkey__().sign(sigdata, ec.ECDSA(hash_alg))
 
     def format_external_signature(self, raw_signature):
-        from ...util.util import bytes_to_ecdsasig
+        """Convert a raw ECDSA signature to ASN.1 DER format."""
+        def bytes_to_ecdsasig(sig_bytes: bytes) -> ECDSASignature:
+            if len(sig_bytes) != 64:
+                raise ValueError("ECDSA signature must be 64 bytes")
+            
+            # Split into r and s components
+            
+            # secp256r1 is big endian
+            # r = int.from_bytes(sig_bytes[:32], 'big')
+            # s = int.from_bytes(sig_bytes[32:], 'big')
+            
+            # secp256k1 is little endian
+            r = int.from_bytes(sig_bytes[:32], 'little')
+            s = int.from_bytes(sig_bytes[32:], 'little')
+            
+            # Create ECDSASignature object
+            sig = ECDSASignature()
+            sig.r = MPI(r)
+            sig.s = MPI(s)
+            return sig
 
         # airgapped_sig_bytes = binascii.a2b_base64(raw_signature)
         # print("airgapped_sig_bytes: ", len(airgapped_sig_bytes), airgapped_sig_bytes)
